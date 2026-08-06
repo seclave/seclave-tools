@@ -29,7 +29,7 @@ import argparse
 import seclave
 import seclave.udev
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 GET_FIELDS = ("group", "username", "password", "optional")
 

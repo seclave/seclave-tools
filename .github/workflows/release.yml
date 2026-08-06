@@ -52,6 +52,10 @@ jobs:
           pipx run build --outdir dist python/seclave-ctl
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # A re-run after a partial failure (one package up, one not) must
+          # not fail on the one that made it.
+          skip-existing: true
 
   publish-crates:
     if: ${{ !contains(github.ref_name, '-') }}
@@ -65,8 +69,18 @@ jobs:
       - uses: rust-lang/crates-io-auth-action@v1
         id: auth
       - name: Publish seclave to crates.io
+        # Skipped when the version is already on the registry, so a re-run,
+        # or a release whose crates were bootstrap-published manually (the
+        # first one has to be - crates.io has no pending publishers), does
+        # not fail on "version already exists".
         working-directory: rust
-        run: cargo publish -p seclave
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+          if curl -fsS "https://crates.io/api/v1/crates/seclave/$version" >/dev/null; then
+            echo "seclave $version already on crates.io; skipping"
+          else
+            cargo publish -p seclave
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
       - name: Publish seclave-ctl to crates.io
@@ -74,6 +88,11 @@ jobs:
         # just went up, and the index usually settles within seconds.
         working-directory: rust
         run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+          if curl -fsS "https://crates.io/api/v1/crates/seclave-ctl/$version" >/dev/null; then
+            echo "seclave-ctl $version already on crates.io; skipping"
+            exit 0
+          fi
           for attempt in 1 2 3; do
             cargo publish -p seclave-ctl && exit 0
             echo "index not settled yet (attempt $attempt); retrying"
