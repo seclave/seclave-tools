@@ -1,0 +1,23 @@
+[package]
+name = "seclave-ctl"
+description = "Command-line client for the Seclave hardware password manager"
+readme = "README.md"
+keywords = ["seclave", "password-manager", "hardware", "usb", "cli"]
+categories = ["command-line-utilities", "hardware-support"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+seclave = { path = "../seclave", version = "0.1.0" }
+# MPL-2.0 (the one non-MIT/Apache dependency): file-level copyleft that
+# obligates sharing changes to serialport's own files only - fine to depend
+# on unmodified from MIT code. Default features off drops the libudev
+# system dependency, so cargo install works on a bare Linux.
+serialport = { version = "4", default-features = false }
+# Wipes secret-bearing buffers on drop, so every exit path is covered, not
+# just the happy one. No derive feature: plain Zeroizing wrappers only.
+zeroize = "1"

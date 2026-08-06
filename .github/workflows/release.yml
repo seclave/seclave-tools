@@ -1,0 +1,84 @@
+# Tag-driven release: push v<version> (matching every version stamp) and the
+# Python packages publish to PyPI and the Rust crate to crates.io.
+#
+# No secrets anywhere - both registries use trusted publishing (OIDC). One
+# asymmetry to know about: PyPI supports *pending* publishers, so the very
+# first Python release can go through CI; crates.io does not - the FIRST
+# publish of each crate is a manual, token-authenticated `cargo publish` from
+# the owner's machine, and the trusted publisher is configured on crates.io
+# afterwards. Until that manual first publish has happened, expect the
+# publish-crates job to fail on a release tag; that is the documented
+# bootstrap, not a bug.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  version-check:
+    # One tag releases every package, so the tag must match every stamp
+    # (scripts/set_version.py writes them together). A -rc.N suffix is
+    # ignored: rc tags rehearse the release of the version they point at.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Tag matches all version stamps
+        run: |
+          py=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' python/seclave/seclave/__init__.py)
+          ctl=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' python/seclave-ctl/seclave_ctl.py)
+          rs=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/Cargo.toml)
+          tag="${GITHUB_REF_NAME#v}"; tag="${tag%%-*}"
+          echo "tag=$tag python=$py ctl=$ctl rust=$rs"
+          [ "$tag" = "$py" ] && [ "$py" = "$ctl" ] && [ "$py" = "$rs" ]
+
+  publish-pypi:
+    # Final tags only - rc rehearsals stay off PyPI (uploads are immutable).
+    if: ${{ !contains(github.ref_name, '-') }}
+    needs: [version-check, test]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build both packages
+        run: |
+          pipx run build --outdir dist python/seclave
+          pipx run build --outdir dist python/seclave-ctl
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-crates:
+    if: ${{ !contains(github.ref_name, '-') }}
+    needs: [version-check, test]
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - name: Publish seclave to crates.io
+        working-directory: rust
+        run: cargo publish -p seclave
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      - name: Publish seclave-ctl to crates.io
+        # After the library: the binary depends on the exact version that
+        # just went up, and the index usually settles within seconds.
+        working-directory: rust
+        run: |
+          for attempt in 1 2 3; do
+            cargo publish -p seclave-ctl && exit 0
+            echo "index not settled yet (attempt $attempt); retrying"
+            sleep 30
+          done
+          exit 1
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

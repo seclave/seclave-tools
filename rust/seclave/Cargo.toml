@@ -1,0 +1,17 @@
+[package]
+name = "seclave"
+description = "The Seclave hardware password manager's USB-slave wire protocol"
+readme = "README.md"
+keywords = ["seclave", "password-manager", "hardware", "usb", "serial"]
+categories = ["encoding", "hardware-support"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = "1"

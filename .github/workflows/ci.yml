@@ -1,0 +1,53 @@
+# Tests on every push and pull request. Release publishing is release.yml.
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:   # release.yml runs these same jobs as its test gate
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Library protocol tests (against the stub device)
+        run: python3 python/seclave/tests/test_protocol.py
+      - name: Library conformance vectors
+        run: python3 python/seclave/tests/test_vectors.py
+      - name: seclave-ctl end-to-end tests
+        run: python3 python/seclave-ctl/tests/test_cli.py
+      - name: Vectors file is regenerated, not hand-edited
+        run: |
+          cd vectors
+          python3 gen_vectors.py
+          git diff --exit-code protocol.json
+      - name: udev rule copies agree
+        # The rule is embedded in the Python library and in the Rust CLI;
+        # they must stay byte-identical.
+        run: |
+          python3 - <<'EOF'
+          import sys
+          sys.path.insert(0, "python/seclave")
+          from seclave import udev
+          rust_copy = open("rust/seclave-ctl/src/60-seclave.rules").read()
+          assert udev.RULES == rust_copy, "udev rule copies have drifted"
+          print("udev rule copies identical")
+          EOF
+
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v6
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests (unit + conformance vectors + doc)
+        run: cargo test
