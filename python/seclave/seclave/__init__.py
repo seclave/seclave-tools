@@ -59,7 +59,7 @@ import struct
 import string
 import logging
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 _log = logging.getLogger("seclave")
 
